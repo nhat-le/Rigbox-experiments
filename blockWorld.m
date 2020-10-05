@@ -18,13 +18,14 @@ nAudChannels = 2;
 audSampleRate = 44100; % Check PTB Snd('DefaultRate');
 
 % Randomize starting side
-firstTrialSide = map(evts.expStart, rand > 0.5);
+firstTrialSide = p.firstTrial;%map(evts.expStart, rand > 0.5);
 
-% Assign contrasts by blocks
-contrastLeft = cond(mod(evts.trialNum - 1, p.blockLength * 2) >= p.blockLength, firstTrialSide, true, 1 - firstTrialSide);
+%% Initialize trial parameters
+trialDataInit = evts.expStart.mapn(@initializeTrialData).subscriptable;
 
-% evts.trialNum.map(@(x) mod(x, 10));%p.onContrast; %p.stimulusContrast(1);
-contrastRight = 1 - contrastLeft;%p.offContrast; %p.stimulusContrast(2);
+
+
+
 
 %% when to present stimuli & allow visual stim to move
 stimulusOn = evts.newTrial; % stimulus should come on at the start of a new trial
@@ -57,15 +58,25 @@ response = cond(...
 response = response.at(threshold); % only update the response signal when the threshold has been crossed
 stimulusOff = threshold.delay(1); % true a second after the threshold is crossed
 
+% A rolling buffer of trial response times
+dt = t.scan(@(a,b)diff([a,b]),0).at(response);
+avgResponseTime = dt.bufferUpTo(100).map(@median);
+
+
+%% Update performance at response
+responseData = vertcat(stimulusDisplacement, avgResponseTime, evts.trialNum);
+% Update performance
+trialData = responseData.at(response).scan(@updateTrialData,trialDataInit).subscriptable;
+% stimDisplacement = stimDisplacement*trialData.wheelGain;
+% Set trial contrast (chosen when updating performance)
+% trialContrast = trialData.trialContrast;
+
+%% Pick contrasts for the trial
+contrastLeft = cond(trialData.trialSide == 1, 0, true, 1);
+contrastRight = 1 - contrastLeft;
+
 %% define correct response and feedback
-% each trial randomly pick -1 or 1 value for use in baited (guess) trials
-rndDraw = map(evts.newTrial, @(x) sign(rand(x)-0.5)); 
-correctResponse = cond(contrastLeft > contrastRight, -1,... % contrast left
-    contrastLeft < contrastRight, 1,... % contrast right
-    (contrastLeft + contrastRight == 0), 0,... % no-go (zero contrast)
-    (contrastLeft == contrastRight) & (rndDraw < 0), -1,... % equal contrast (baited)
-    (contrastLeft == contrastRight) & (rndDraw > 0), 1); % equal contrast (baited)
-feedback = correctResponse == response;
+feedback = trialData.feedback;
 % Only update the feedback signal at the time of the threshold being crossed
 feedback = feedback.at(threshold); 
 
@@ -82,16 +93,20 @@ azimuth = cond(...
     interactiveOn.to(threshold), stimulusDisplacement,... % Closed-loop condition, where the azimuth yoked to the wheel
     threshold.to(stimulusOff),  -response*abs(p.stimulusAzimuth)); % Once threshold is reached the stimulus is fixed again
 
+
+
+
+
 %% define the visual stimulus
 
 % Test stim left
 leftStimulus = vis.grating(t, 'sinusoid', 'gaussian'); % create a Gabor grating
 leftStimulus.orientation = p.stimulusOrientation;
 leftStimulus.altitude = 0;
-leftStimulus.sigma = [9,9]; % in visual degrees
+leftStimulus.sigma = [7,7]; % in visual degrees
 leftStimulus.spatialFreq = p.spatialFrequency; % in cylces per degree
 leftStimulus.phase = 2*pi*evts.newTrial.map(@(v)rand);   % phase randomly changes each trial
-leftStimulus.contrast = contrastLeft;
+leftStimulus.contrast = contrastLeft.at(interactiveOn);
 leftStimulus.azimuth = -p.stimulusAzimuth + azimuth;
 % When show is true, the stimulus is visible
 leftStimulus.show = stimulusOn.to(stimulusOff);
@@ -102,10 +117,10 @@ vs.leftStimulus = leftStimulus; % store stimulus in visual stimuli set and log a
 rightStimulus = vis.grating(t, 'sinusoid', 'gaussian');
 rightStimulus.orientation = p.stimulusOrientation;
 rightStimulus.altitude = 0;
-rightStimulus.sigma = [9,9];
+rightStimulus.sigma = [7,7];
 rightStimulus.spatialFreq = p.spatialFrequency;
 rightStimulus.phase = 2*pi*evts.newTrial.map(@(v)rand);
-rightStimulus.contrast = contrastRight;
+rightStimulus.contrast = contrastRight.at(interactiveOn);
 rightStimulus.azimuth = p.stimulusAzimuth + azimuth;
 rightStimulus.show = stimulusOn.to(stimulusOff); 
 
@@ -119,8 +134,8 @@ nextCondition = feedback > 0 | p.repeatIncorrect == false;
 % we want to save these signals so we put them in events with appropriate
 % names:
 evts.stimulusOn = stimulusOn;
-evts.leftContrast = contrastLeft;
-evts.rightContrast = contrastRight;
+evts.contrastLeft = contrastLeft;
+evts.contrastRight = contrastRight;
 % save the contrasts as a difference between left and right
 evts.contrast = p.stimulusContrast.map(@diff); 
 evts.azimuth = azimuth;
@@ -138,26 +153,62 @@ evts.endTrial = nextCondition.at(stimulusOff).delay(p.interTrialDelay);
 
 %% Parameter defaults
 try
-p.onsetToneFrequency = 8000;
+p.onsetToneFrequency = 5000;
 % p.stimulusContrast = [1 0;0 1;0.5 0;0 0.5]'; % conditional parameters have ncols > 1
 p.onContrast = 1;
 p.offContrast = 0;
 
-p.repeatIncorrect = true;
+p.repeatIncorrect = false;
 p.interactiveDelay = 0.4;
 p.onsetToneAmplitude = 0.2;
 p.responseWindow = Inf;
-p.stimulusAzimuth = 90;
+p.stimulusAzimuth = 35;
 p.noiseBurstAmp = 0.01;
 p.noiseBurstDur = 0.5;
-p.rewardSize = 3;
+p.rewardSize = 1.5;
 p.rewardKey = 'r';
 p.stimulusOrientation = 0;
 p.spatialFrequency = 0.19; % Prusky & Douglas, 2004
 p.interTrialDelay = 0.5;
 p.wheelGain = 3;
-p.blockLength = 3; % Length of right/left trial blocks
+p.blockLength = 10; % Length of right/left trial blocks
+p.firstTrial = 1;
 % p.audDevIdx = 1;
 catch
 end
+end
+
+
+function trialDataInit = initializeTrialData(expRef)
+trialDataInit = struct;
+trialDataInit.ntrials = 0;
+trialDataInit.consecCorrect = 0;
+trialDataInit.hits = 0;
+trialDataInit.misses = 0;
+trialDataInit.avgRT = 0;
+trialDataInit.trialSide = 1; %left = 1, right = -1
+trialDataInit.feedback = -1;
+end
+
+
+function trialData = updateTrialData(trialData,responseData)
+% Update the performance and pick the next contrast
+stimDisplacement = responseData(1);
+avgResponseTime = responseData(2);
+trialNum = responseData(3);
+
+trialData.ntrials = trialData.ntrials + 1;
+trialData.hits = trialData.hits + 1;
+trialData.avgRT = avgResponseTime;
+
+
+%%%% Define response type based on trial condition
+trialData.feedback = stimDisplacement*trialData.trialSide < 0;
+
+
+% For switching side
+trialData.trialSide = trialData.trialSide * -1;
+
+
+
 end

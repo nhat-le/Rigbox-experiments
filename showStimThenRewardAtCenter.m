@@ -1,5 +1,8 @@
-function showStimThenReward(t, evts, p, vs, in, out, audio)
-%% Adapted from: advancedChoiceWorld
+function showStimThenRewardAtCenter(t, evts, p, vs, in, out, audio)
+%% Adapted from: showStimThenReward
+% Show stimulus randomly on left or right side, then reward
+
+
 % Burgess 2AUFC task with contrast discrimination and baited equal contrast
 % trial conditions.  
 % 2017-03-25 Added contrast discrimination MW
@@ -9,8 +12,6 @@ function showStimThenReward(t, evts, p, vs, in, out, audio)
 
 %% parameters
 wheel = in.wheel.skipRepeats(); % skipRepeats means that this signal doesn't update if the new value is the same of the previous one (i.e. if the wheel doesn't move)
-rewardKey = p.rewardKey.at(evts.expStart); % get value of rewardKey at experiemnt start, otherwise it will take the same value each new trial
-rewardKeyPressed = in.keyboard.strcmp(rewardKey); % true each time the reward key is pressed
 nAudChannels = 2;
 % p.audDevIdx; % Windows' audio device index (default is 1)
 audSampleRate = 44100; % Check PTB Snd('DefaultRate');
@@ -32,57 +33,50 @@ audio.onsetTone = onsetToneSamples.at(interactiveOn); % At the time of 'interati
 % (up and down) from both channels for maximum resolution. This means that
 % e.g. a KÜBLER 2400 with 100 pulses per revolution will actually generate
 % *400* position ticks per full revolution.
-wheelOrigin = wheel.at(interactiveOn); % wheel position sampled at 'interactiveOn'
-millimetersFactor = map2(p.wheelGain, 31*2*pi/(1024*4), @times); % convert the wheel gain to a value in mm/deg
-stimulusDisplacement = millimetersFactor*(wheel - wheelOrigin); % yoke the stimulus displacment to the wheel movement during closed loop
+% wheelOrigin = wheel.at(interactiveOn); % wheel position sampled at 'interactiveOn'
+% millimetersFactor = map2(p.wheelGain, 31*2*pi/(1024*4), @times); % convert the wheel gain to a value in mm/deg
+stimulusDisplacement = 0; %millimetersFactor*(wheel - wheelOrigin); % yoke the stimulus displacment to the wheel movement during closed loop
 
 %% define response and response threshold 
 responseTimeOver = (t - t.at(interactiveOn)) > p.responseWindow; % p.responseWindow may be set to Inf
-
-timeout = responseTimeOver.skipRepeats;
-threshold = interactiveOn.setTrigger(...
-  abs(stimulusDisplacement) >= abs(p.stimulusAzimuth) | responseTimeOver);
-timeoutThreshold = responseTimeOver & ...
-    (abs(stimulusDisplacement) < abs(p.stimulusAzimuth));
-timeoutThreshold = skipRepeats(timeoutThreshold);
-correctThreshold = abs(stimulusDisplacement) >= abs(p.stimulusAzimuth);
-correctThreshold = skipRepeats(correctThreshold);
-
-response = cond(...
-    responseTimeOver, 0,... % if the response time is over the response = 0
-    true, -sign(stimulusDisplacement)); % otherwise it should be the inverse of the sign of the stimulusDisplacement
-
-response = response.at(threshold); % only update the response signal when the threshold has been crossed
-stimulusOff = threshold.delay(0); % true a second after the threshold is crossed
+stimCenter = interactiveOn.setTrigger(responseTimeOver);
+rewardTime = stimCenter.delay(0.5);
+stimulusOff = rewardTime.delay(0.5);
 
 %% define correct response and feedback
 % each trial randomly pick -1 or 1 value for use in baited (guess) trials
-rndDraw = map(evts.newTrial, @(x) sign(rand(x)-0.5)); 
+% rndDraw = map(evts.newTrial, @(x) sign(rand(x)-0.5)); 
 correctResponse = cond(contrastLeft > contrastRight, -1,... % contrast left
-    contrastLeft < contrastRight, 1,... % contrast right
-    (contrastLeft + contrastRight == 0), 0,... % no-go (zero contrast)
-    (contrastLeft == contrastRight) & (rndDraw < 0), -1,... % equal contrast (baited)
-    (contrastLeft == contrastRight) & (rndDraw > 0), 1); % equal contrast (baited)
-feedback = correctResponse == response;
-% Only update the feedback signal at the time of the threshold being crossed
-feedback = feedback.at(threshold); 
+    contrastLeft < contrastRight, 1); %,... % contrast right
+%     (contrastLeft + contrastRight == 0)0,... % no-go (zero contrast)
+%     (contrastLeft == contrastRight) & (rndDraw < 0), -1,... % equal contrast (baited)
+%     (contrastLeft == contrastRight) & (rndDraw > 0), 1); % equal contrast (baited)
+%feedback = correctResponse == response;
+% feedback = abs(response) > 0;
+% % Only update the feedback signal at the time of the threshold being crossed
+% feedback = feedback.at(threshold); 
 
-noiseBurstSamples = p.noiseBurstAmp*...
-    mapn(nAudChannels, p.noiseBurstDur*audSampleRate, @randn);
-audio.noiseBurst = noiseBurstSamples.at(feedback==0); % When the subject gives an incorrect response, send samples to audio device and log as 'noiseBurst'
+% noiseBurstSamples = p.noiseBurstAmp*...
+%     mapn(nAudChannels, p.noiseBurstDur*audSampleRate, @randn);
+% audio.noiseBurst = noiseBurstSamples.at(feedback>0); % When the subject gives an incorrect response, send samples to audio device and log as 'noiseBurst'
 
 % If timeout, give p.rewardTimeout, if correct choice, give p.rewardCorrect
-reward = cond(timeoutThreshold, 1.5, ...
-    correctThreshold, 2); 
+% rewardTimeout = p.rewardTimeout.at(interactiveOn);
+% rewardAction = p.rewardAction.at(interactiveOn);
+reward = p.rewardTimeout.at(rewardTime);
 
+% cond(timeoutThreshold, rewardTimeout, ...
+%     correctThreshold, rewardAction); 
+% audio.noiseBurst = noiseBurstSamples.at(feedback > -3);
+% 1.5 for timeout, 2 for correct
 
 out.reward = reward; %p.rewardSize.at(threshold) + p.rewardSize.at(correctThreshold); % output this signal to the reward controller
 
 %% stimulus azimuth
 azimuth = cond(...
     stimulusOn.to(interactiveOn), 0,... % Before the closed-loop condition, the stimulus is at it's starting azimuth
-    interactiveOn.to(threshold), stimulusDisplacement,... % Closed-loop condition, where the azimuth yoked to the wheel
-    threshold.to(stimulusOff),  -response*abs(p.stimulusAzimuth)); % Once threshold is reached the stimulus is fixed again
+    interactiveOn.to(stimCenter), 0,... % Closed-loop condition, where the azimuth yoked to the wheel
+    stimCenter.to(stimulusOff), -correctResponse * p.movein * abs(p.stimulusAzimuth)); %-response*abs(p.stimulusAzimuth)); % Once threshold is reached the stimulus is fixed again
 
 %% define the visual stimulus
 
@@ -90,11 +84,12 @@ azimuth = cond(...
 leftStimulus = vis.grating(t, 'sinusoid', 'gaussian'); % create a Gabor grating
 leftStimulus.orientation = p.stimulusOrientation;
 leftStimulus.altitude = 0;
-leftStimulus.sigma = [9,9]; % in visual degrees
+leftStimulus.sigma = [p.sigma, p.sigma]; % in visual degrees
 leftStimulus.spatialFreq = p.spatialFrequency; % in cylces per degree
 leftStimulus.phase = 2*pi*evts.newTrial.map(@(v)rand);   % phase randomly changes each trial
 leftStimulus.contrast = contrastLeft;
 leftStimulus.azimuth = -p.stimulusAzimuth + azimuth;
+% leftStimulus.color = [1 0 0];
 % When show is true, the stimulus is visible
 leftStimulus.show = stimulusOn.to(stimulusOff);
 
@@ -104,7 +99,9 @@ vs.leftStimulus = leftStimulus; % store stimulus in visual stimuli set and log a
 rightStimulus = vis.grating(t, 'sinusoid', 'gaussian');
 rightStimulus.orientation = p.stimulusOrientation;
 rightStimulus.altitude = 0;
-rightStimulus.sigma = [9,9];
+rightStimulus.sigma = [p.sigma, p.sigma];
+% rightStimulus.color = [0 1 0];
+
 rightStimulus.spatialFreq = p.spatialFrequency;
 rightStimulus.phase = 2*pi*evts.newTrial.map(@(v)rand);
 rightStimulus.contrast = contrastRight;
@@ -116,22 +113,19 @@ vs.rightStimulus = rightStimulus; % store stimulus in visual stimuli set
 %% End trial and log events
 % Let's use the next set of conditional paramters only if positive feedback
 % was given, or if the parameter 'Repeat incorrect' was set to false.
-nextCondition = feedback > 0 | p.repeatIncorrect == false; 
+nextCondition = p.repeatIncorrect == false; 
 
 % we want to save these signals so we put them in events with appropriate
 % names:
 evts.stimulusOn = stimulusOn;
+evts.interactiveOn = interactiveOn;
 % save the contrasts as a difference between left and right
-% evts.contrast = p.stimulusContrast.map(@diff); 
-% evts.azimuth = azimuth;
-% evts.response = response;
-evts.timeoutThreshold = skipRepeats(timeoutThreshold);
-evts.correctThreshold = skipRepeats(correctThreshold);
-% evts.rewardTotal = rewardTotal;
-evts.feedback = feedback;
-evts.timeout = timeout;
-% Accumulate reward signals and append microlitre units
-evts.totalReward = out.reward.scan(@plus, 0).map(fun.partial(@sprintf, '%.1fµl')); 
+evts.contrast = p.stimulusContrast.map(@diff); 
+evts.azimuth = azimuth;
+evts.stimCenter = stimCenter;
+evts.stimulusOff = stimulusOff;
+evts.contrastLeft = contrastLeft;
+evts.contrastRight = contrastRight;
 
 % Trial ends when evts.endTrial updates.  
 % If the value of evts.endTrial is false, the current set of conditional
@@ -141,23 +135,25 @@ evts.endTrial = nextCondition.at(stimulusOff).delay(p.interTrialDelay);
 
 %% Parameter defaults
 try
-p.onsetToneFrequency = 8000;
-p.stimulusContrast = [1 0;0 1;0.5 0;0 0.5]'; % conditional parameters have ncols > 1
-p.repeatIncorrect = true;
+p.onsetToneFrequency = 5000;
+p.stimulusContrast = [1 0;0 1]'; % conditional parameters have ncols > 1
+p.repeatIncorrect = false;
 p.interactiveDelay = 0;
 p.onsetToneAmplitude = 0.2;
-p.responseWindow = 5;
-p.stimulusAzimuth = 30;
+p.responseWindow = 10;
+p.stimulusAzimuth = 35;
 p.noiseBurstAmp = 0.01;
 p.noiseBurstDur = 0.5;
+p.sigma = 5;
 % p.rewardSize = 3;
 p.rewardKey = 'r';
 p.stimulusOrientation = 0;
-p.spatialFrequency = 0.19; % Prusky & Douglas, 2004
-p.interTrialDelay = 0;
-p.wheelGain = 3;
-p.rewardTimeout = 3;
-p.rewardCorrect = 5;
+p.spatialFrequency = 0.1; % Prusky & Douglas, 2004
+p.interTrialDelay = 1;
+p.wheelGain = 4;
+p.rewardTimeout = 1.5;
+p.rewardAction = 1.8;
+p.movein = 1; %1 for move inward, -1 for outward
 % p.audDevIdx = 1;
 catch
 end

@@ -79,7 +79,7 @@ azimuth = cond(...
 leftStimulus = vis.grating(t, 'sinusoid', 'gaussian'); % create a Gabor grating
 leftStimulus.orientation = p.stimulusOrientation;
 leftStimulus.altitude = 0;
-leftStimulus.sigma = [9,9]; % in visual degrees
+leftStimulus.sigma = [p.sigma,p.sigma]; % in visual degrees
 leftStimulus.spatialFreq = p.spatialFrequency; % in cylces per degree
 leftStimulus.phase = 2*pi*evts.newTrial.map(@(v)rand);   % phase randomly changes each trial
 leftStimulus.contrast = contrastLeft;
@@ -93,7 +93,7 @@ vs.leftStimulus = leftStimulus; % store stimulus in visual stimuli set and log a
 rightStimulus = vis.grating(t, 'sinusoid', 'gaussian');
 rightStimulus.orientation = p.stimulusOrientation;
 rightStimulus.altitude = 0;
-rightStimulus.sigma = [9,9];
+rightStimulus.sigma = [p.sigma,p.sigma];
 rightStimulus.spatialFreq = p.spatialFrequency;
 rightStimulus.phase = 2*pi*evts.newTrial.map(@(v)rand);
 rightStimulus.contrast = contrastRight;
@@ -112,6 +112,8 @@ nextCondition = feedback > 0 | p.repeatIncorrect == false;
 evts.stimulusOn = stimulusOn;
 % save the contrasts as a difference between left and right
 evts.contrast = p.stimulusContrast.map(@diff); 
+evts.contrastLeft = p.stimulusContrast(1);
+evts.contrastRight = p.stimulusContrast(2);
 evts.azimuth = azimuth;
 evts.response = response;
 evts.feedback = feedback;
@@ -126,21 +128,22 @@ evts.endTrial = nextCondition.at(stimulusOff).delay(p.interTrialDelay);
 
 %% Parameter defaults
 try
-p.onsetToneFrequency = 8000;
-p.stimulusContrast = [1 0;0 1;0.5 0;0 0.5]'; % conditional parameters have ncols > 1
+p.onsetToneFrequency = 5000;
+p.stimulusContrast = [1 0;0 1]'; % conditional parameters have ncols > 1
 p.repeatIncorrect = true;
 p.interactiveDelay = 0.4;
 p.onsetToneAmplitude = 0.2;
-p.responseWindow = Inf;
-p.stimulusAzimuth = 90;
+p.responseWindow = 60;
+p.stimulusAzimuth = 35;
 p.noiseBurstAmp = 0.01;
 p.noiseBurstDur = 0.5;
-p.rewardSize = 3;
+p.rewardSize = 1.5;
 p.rewardKey = 'r';
 p.stimulusOrientation = 0;
-p.spatialFrequency = 0.19; % Prusky & Douglas, 2004
+p.spatialFrequency = 0.1; % Prusky & Douglas, 2004
 p.interTrialDelay = 0.5;
-p.wheelGain = 3;
+p.wheelGain = 4;
+p.sigma = 5;
 % p.audDevIdx = 1;
 catch
 end

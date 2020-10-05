@@ -1,4 +1,4 @@
-function basicChoiceworld(t, events, p, visStim, inputs, outputs, audio)
+function basicChoiceWorldLMN(t, events, p, visStim, inputs, outputs, audio)
 % basicChoiceworld(t, events, parameters, visStim, inputs, outputs, audio)
 % 2017-03 - AP created
 % 2018-01 - MW updated: automatic reward reduction, L-R performance
@@ -32,15 +32,15 @@ trialsToZeroContrast = 500;
 % Trial choice parameters
 % Staircase trial choice
 % (how often staircase trials appear - every staircaseTrials trials)
-staircaseTrials = 2; 
+staircaseTrials = p.staircaseTrials.skipRepeats; 
 % (how many hits to move forward on the staircase)
-staircaseHit = 3;
+staircaseHit = p.staircaseHit.skipRepeats;
 % (how many misses to move backward on the staircase)
-staircaseMiss = 1;
+staircaseMiss = p.staircaseMiss.skipRepeats;
 
 % Starting reward size
-rewardSize = 3;
-wheelGain = 5;
+rewardSize = p.rewardSize.skipRepeats;
+wheelGain = p.wheelGain.skipRepeats;
 
 
 
@@ -230,7 +230,7 @@ p.rewardSize = 2;
 
 
 % Timing
-p.prestimQuiescentTime = 0.5;
+p.prestimQuiescentTime = 3;
 p.cueInteractiveDelay = 0.5;
 p.itiHit = 1;
 p.itiMiss = 2;

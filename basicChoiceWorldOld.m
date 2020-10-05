@@ -1,4 +1,4 @@
-function basicChoiceworld(t, events, p, visStim, inputs, outputs, audio)
+function basicChoiceworld(t, events, parameters, visStim, inputs, outputs, audio)
 % basicChoiceworld(t, events, parameters, visStim, inputs, outputs, audio)
 % 2017-03 - AP created
 % 2018-01 - MW updated: automatic reward reduction, L-R performance
@@ -16,7 +16,16 @@ function basicChoiceworld(t, events, p, visStim, inputs, outputs, audio)
 
 
 %% Fixed parameters
-% ---- Parameters used for trialData init -----
+
+% Trial choice parameters
+% Staircase trial choice
+% (how often staircase trials appear - every staircaseTrials trials)
+staircaseTrials = 2; 
+% (how many hits to move forward on the staircase)
+staircaseHit = 3;
+% (how many misses to move backward on the staircase)
+staircaseMiss = 1;
+
 % Stimulus/target
 % (which contrasts to use)
 contrasts = [1,0.5,0.25,0.125,0.06,0];
@@ -28,33 +37,20 @@ repeatOnMiss = [true,true,false,false,false,false];
 trialsToBuffer = 50;
 % (number of trials after introducing 12.5% contrast to introduce 0%)
 trialsToZeroContrast = 500;
-
-% Trial choice parameters
-% Staircase trial choice
-% (how often staircase trials appear - every staircaseTrials trials)
-staircaseTrials = 2; 
-% (how many hits to move forward on the staircase)
-staircaseHit = 3;
-% (how many misses to move backward on the staircase)
-staircaseMiss = 1;
-
+sigma = [7,7];
+spatialFreq = 1/15;
+% stimFlickerFrequency = 5; % DISABLED BELOW
+startingAzimuth = 90;
+responseDisplacement = 90;
 % Starting reward size
 rewardSize = 3;
-wheelGain = 5;
 
-
-
-sigma = [p.sigma,p.sigma];
-spatialFreq = p.spatialFreq;
-% stimFlickerFrequency = 5; % DISABLED BELOW
-startingAzimuth = p.startingAzimuth;
-responseDisplacement = p.responseDisplacement;
 
 % Timing
-prestimQuiescentTime = p.prestimQuiescentTime;
-cueInteractiveDelay = p.cueInteractiveDelay;
-itiHit = p.itiHit;
-itiMiss = p.itiMiss;
+prestimQuiescentTime = 0.5;
+cueInteractiveDelay = 0.5;
+itiHit = 1;
+itiMiss = 2;
 
 % Sounds
 audioSampleRate = 44100;
@@ -77,6 +73,7 @@ missNoiseSamples = missNoiseAmplitude*events.expStart.map(@(x) ...
 quiescThreshold = 1;
 encoderRes = 1024; % Resolution of the rotary encoder
 millimetersFactor = events.newTrial.map2(31*2*pi/(encoderRes*4), @times); % convert the wheel gain to a value in mm/deg
+wheelGain = 5;
 
 %% Initialize trial data
 
@@ -197,58 +194,6 @@ events.trialsToZeroContrast = trialData.trialsToZeroContrast;
 events.hitBuffer = trialData.hitBuffer;
 events.sessionPerformance = trialData.sessionPerformance;
 events.totalWater = water.scan(@plus, 0).map(fun.partial(@sprintf, '%.1fµl'));
-
-% Default parameters
-try
-% Trial choice parameters
-% Staircase trial choice
-% (how often staircase trials appear - every staircaseTrials trials)
-p.staircaseTrials = 2; 
-% (how many hits to move forward on the staircase)
-p.staircaseHit = 3;
-% (how many misses to move backward on the staircase)
-p.staircaseMiss = 1;
-
-% Stimulus/target
-% (which contrasts to use)
-p.contrasts = [1,0.5,0.25,0.125,0.06,0];
-% (which conrasts to use at the beginning of training)
-p.startingContrasts = [true,true,false,false,false,false];
-% (which contrasts to repeat on miss)
-p.repeatOnMiss = [true,true,false,false,false,false];
-% (number of trials to judge rolling performance)
-p.trialsToBuffer = 50;
-% (number of trials after introducing 12.5% contrast to introduce 0%)
-p.trialsToZeroContrast = 500;
-p.sigma = 7;
-p.spatialFreq = 1/15;
-% stimFlickerFrequency = 5; % DISABLED BELOW
-p.startingAzimuth = 35;
-p.responseDisplacement = 35;
-% Starting reward size
-p.rewardSize = 2;
-
-
-% Timing
-p.prestimQuiescentTime = 0.5;
-p.cueInteractiveDelay = 0.5;
-p.itiHit = 1;
-p.itiMiss = 2;
-
-% Sounds
-p.onsetToneAmplitude = 0.2;
-p.onsetToneFreq = 6000;
-p.onsetToneDuration = 0.1;
-p.onsetToneRampDuration = 0.01;
-p.missNoiseDuration = 0.5;
-p.missNoiseAmplitude = 0.02;
-
-
-% Wheel parameters
-p.quiescThreshold = 1;
-p.wheelGain = 5;
-catch
-end
 end
 
 function trialDataInit = initializeTrialData(expRef, ...

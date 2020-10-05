@@ -16,6 +16,7 @@ classdef advancedChoiceWorldExpPanel < eui.ExpPanel
   properties (Access = protected)
     PsychometricAxes % Handle to axes of psychometric plot
     ExperimentAxes % Handle to axes of wheel trace and threhold line plot
+    PerformanceAxes % To display trial by trial performance
     ThresholdLineAxes % Handle to axes of right/wrong threshold line plot
     InputSensorPlot % Handle to axes for wheel trace plot
     InputSensorPosTime % Vector of timesstamps in seconds for plotting the wheel trace
@@ -191,6 +192,31 @@ classdef advancedChoiceWorldExpPanel < eui.ExpPanel
             obj.InputSensorPos(lastidx) = NaN;
             obj.InputSensorPosTime(lastidx) = t(end);
           end
+          
+          %LMN
+          idx = strcmp('events.contrastLeft', {updates.name});
+          if any(idx); obj.Block.trial(i).contrastLeftTemp = updates(idx).value; end
+          
+          idx = strcmp('events.contrastRight', {updates.name});
+          if any(idx)
+              obj.Block.trial(i).contrastRightTemp = updates(idx).value; 
+              fprintf('i = %d, templeft = %d, tempright = %d\n', i, obj.Block.trial(i).contrastLeftTemp, obj.Block.trial(i).contrastRightTemp);
+          end
+          
+          % Shift entries right, i.e. contrastLeft(i) =
+          % contrastLeftTemp(i-1)
+          obj.Block.trial(1).contrastLeft = obj.Block.trial(1).contrastLeftTemp;
+          obj.Block.trial(1).contrastRight = obj.Block.trial(1).contrastRightTemp;
+          if i >= 2
+              for j = 2:i
+                  obj.Block.trial(j).contrastLeft = obj.Block.trial(j-1).contrastLeftTemp;
+                  obj.Block.trial(j).contrastRight = obj.Block.trial(j-1).contrastRightTemp;
+              end
+          end
+          
+    
+          %
+          
           idx = strcmp('events.feedback', {updates.name});
           if any(idx); obj.Block.trial(i).feedback = updates(idx).value; end
           idx = strcmp('events.trialNum', {updates.name});
@@ -204,7 +230,9 @@ classdef advancedChoiceWorldExpPanel < eui.ExpPanel
               obj.PsychometricAxes.plot(contrast*[100 100], [-10 110], 'k:', 'LineWidth', 3)
             end
             if i > 2
+              %psy.plot2AUFC(obj.PsychometricAxes.Handle, obj.Block);
               psy.plot2AUFC(obj.PsychometricAxes.Handle, obj.Block);
+              psy.plotPerf(obj.PerformanceAxes.Handle, obj.Block);
             end
           end
            
@@ -311,7 +339,10 @@ classdef advancedChoiceWorldExpPanel < eui.ExpPanel
         'Callback', @(~, ~) obj.viewParams());
     
       % Build the psychometric axes
+      % Build the psychometric axes
       plotgrid = uiextras.Grid('Parent', obj.CustomPanel, 'Padding', 5);
+      uiextras.Empty('Parent', plotgrid, 'Visible', 'off');
+      uiextras.Empty('Parent', plotgrid, 'Visible', 'off');
       uiextras.Empty('Parent', plotgrid, 'Visible', 'off');
       uiextras.Empty('Parent', plotgrid, 'Visible', 'off');
       uiextras.Empty('Parent', plotgrid, 'Visible', 'off');
@@ -320,8 +351,18 @@ classdef advancedChoiceWorldExpPanel < eui.ExpPanel
       obj.PsychometricAxes.ActivePositionProperty = 'position';
       obj.PsychometricAxes.YLim = [-1 101];
       obj.PsychometricAxes.NextPlot = 'add';
+      obj.PsychometricAxes.yLabel('% right-ward');
       
+      uiextras.Empty('Parent', plotgrid, 'Visible', 'off');      
+      obj.PerformanceAxes = bui.Axes(plotgrid);
+      obj.PerformanceAxes.ActivePositionProperty = 'position';
+      obj.PerformanceAxes.XTickLabel = [];
+      obj.PerformanceAxes.XLim = [-obj.Parameters.Struct.stimulusAzimuth...
+          obj.Parameters.Struct.stimulusAzimuth];
+      obj.PerformanceAxes.NextPlot = 'add';
+      obj.PerformanceAxes.yLabel('Position');
       uiextras.Empty('Parent', plotgrid, 'Visible', 'off');
+      
       obj.ExperimentAxes = bui.Axes(plotgrid);
       obj.ExperimentAxes.ActivePositionProperty = 'position';
       obj.ExperimentAxes.XTickLabel = [];
@@ -331,10 +372,10 @@ classdef advancedChoiceWorldExpPanel < eui.ExpPanel
       uiextras.Empty('Parent', plotgrid, 'Visible', 'off');
       uiextras.Empty('Parent', plotgrid, 'Visible', 'off');
       
-      obj.PsychometricAxes.yLabel('% right-ward');
+      
       
       plotgrid.ColumnSizes = [50 -1 10];
-      plotgrid.RowSizes = [-1 50 -2 40];
+      plotgrid.RowSizes = [-2 40 -2 40 -1 10];
     end
   end
   

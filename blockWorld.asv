@@ -1,5 +1,7 @@
-function showStimThenReward(t, evts, p, vs, in, out, audio)
+function blockWorld(t, evts, p, vs, in, out, audio)
 %% Adapted from: advancedChoiceWorld
+% Block trial structure: blocks of right alternating with left trials, user
+% specify the length of the block
 % Burgess 2AUFC task with contrast discrimination and baited equal contrast
 % trial conditions.  
 % 2017-03-25 Added contrast discrimination MW
@@ -14,8 +16,16 @@ rewardKeyPressed = in.keyboard.strcmp(rewardKey); % true each time the reward ke
 nAudChannels = 2;
 % p.audDevIdx; % Windows' audio device index (default is 1)
 audSampleRate = 44100; % Check PTB Snd('DefaultRate');
-contrastLeft = p.stimulusContrast(1);
-contrastRight = p.stimulusContrast(2);
+
+% Randomize starting side
+firstTrialSide = p.firstTrial;%map(evts.expStart, rand > 0.5);
+
+%% Initialize trial parameters
+trialDataInit = evts.expStart.mapn(@initializeTrialData).subscriptable;
+
+
+
+
 
 %% when to present stimuli & allow visual stim to move
 stimulusOn = evts.newTrial; % stimulus should come on at the start of a new trial
@@ -38,49 +48,46 @@ stimulusDisplacement = millimetersFactor*(wheel - wheelOrigin); % yoke the stimu
 
 %% define response and response threshold 
 responseTimeOver = (t - t.at(interactiveOn)) > p.responseWindow; % p.responseWindow may be set to Inf
-
-timeout = responseTimeOver.skipRepeats;
 threshold = interactiveOn.setTrigger(...
   abs(stimulusDisplacement) >= abs(p.stimulusAzimuth) | responseTimeOver);
-timeoutThreshold = responseTimeOver & ...
-    (abs(stimulusDisplacement) < abs(p.stimulusAzimuth));
-timeoutThreshold = skipRepeats(timeoutThreshold);
-correctThreshold = abs(stimulusDisplacement) >= abs(p.stimulusAzimuth);
-correctThreshold = skipRepeats(correctThreshold);
 
 response = cond(...
     responseTimeOver, 0,... % if the response time is over the response = 0
     true, -sign(stimulusDisplacement)); % otherwise it should be the inverse of the sign of the stimulusDisplacement
 
 response = response.at(threshold); % only update the response signal when the threshold has been crossed
-stimulusOff = threshold.delay(0); % true a second after the threshold is crossed
+stimulusOff = threshold.delay(1); % true a second after the threshold is crossed
+
+% A rolling buffer of trial response times
+dt = t.scan(@(a,b)diff([a,b]),0).at(response);
+avgResponseTime = dt.bufferUpTo(100).map(@median);
+
+
+%% Update performance at response
+responseData = vertcat(stimulusDisplacement, avgResponseTime, evts.trialNum);
+% Update performance
+trialData = responseData.at(response).scan(@updateTrialData,trialDataInit).subscriptable;
+% stimDisplacement = stimDisplacement*trialData.wheelGain;
+% Set trial contrast (chosen when updating performance)
+% trialContrast = trialData.trialContrast;
+
+%% Pick contrasts for the trial
+contrastLeft = trialData.contrastLeft;
+contrastRight = 1 - contrastLeft;
 
 %% define correct response and feedback
-% each trial randomly pick -1 or 1 value for use in baited (guess) trials
-rndDraw = map(evts.newTrial, @(x) sign(rand(x)-0.5)); 
 correctResponse = cond(contrastLeft > contrastRight, -1,... % contrast left
-    contrastLeft < contrastRight, 1,... % contrast right
-    (contrastLeft + contrastRight == 0), 0,... % no-go (zero contrast)
-    (contrastLeft == contrastRight) & (rndDraw < 0), -1,... % equal contrast (baited)
-    (contrastLeft == contrastRight) & (rndDraw > 0), 1); % equal contrast (baited)
-%feedback = correctResponse == response;
-feedback = abs(response) > 0;
+    contrastLeft < contrastRight, 1);
+feedback = correctResponse == response;
 % Only update the feedback signal at the time of the threshold being crossed
 feedback = feedback.at(threshold); 
 
 noiseBurstSamples = p.noiseBurstAmp*...
     mapn(nAudChannels, p.noiseBurstDur*audSampleRate, @randn);
-audio.noiseBurst = noiseBurstSamples.at(feedback>0); % When the subject gives an incorrect response, send samples to audio device and log as 'noiseBurst'
+audio.noiseBurst = noiseBurstSamples.at(feedback==0); % When the subject gives an incorrect response, send samples to audio device and log as 'noiseBurst'
 
-% If timeout, give p.rewardTimeout, if correct choice, give p.rewardCorrect
-rewardTimeout = p.rewardTimeout.at(interactiveOn);
-rewardAction = p.rewardAction.at(interactiveOn);
-reward = cond(timeoutThreshold, rewardTimeout, ...
-    correctThreshold, rewardAction); 
-% audio.noiseBurst = noiseBurstSamples.at(feedback > -3);
-% 1.5 for timeout, 2 for correct
-
-out.reward = reward; %p.rewardSize.at(threshold) + p.rewardSize.at(correctThreshold); % output this signal to the reward controller
+reward = merge(rewardKeyPressed, feedback > 0);% only update when feedback changes to greater than 0, or reward key is pressed
+out.reward = p.rewardSize.at(reward); % output this signal to the reward controller
 
 %% stimulus azimuth
 azimuth = cond(...
@@ -88,13 +95,17 @@ azimuth = cond(...
     interactiveOn.to(threshold), stimulusDisplacement,... % Closed-loop condition, where the azimuth yoked to the wheel
     threshold.to(stimulusOff),  -response*abs(p.stimulusAzimuth)); % Once threshold is reached the stimulus is fixed again
 
+
+
+
+
 %% define the visual stimulus
 
 % Test stim left
 leftStimulus = vis.grating(t, 'sinusoid', 'gaussian'); % create a Gabor grating
 leftStimulus.orientation = p.stimulusOrientation;
 leftStimulus.altitude = 0;
-leftStimulus.sigma = [9,9]; % in visual degrees
+leftStimulus.sigma = [7,7]; % in visual degrees
 leftStimulus.spatialFreq = p.spatialFrequency; % in cylces per degree
 leftStimulus.phase = 2*pi*evts.newTrial.map(@(v)rand);   % phase randomly changes each trial
 leftStimulus.contrast = contrastLeft;
@@ -108,7 +119,7 @@ vs.leftStimulus = leftStimulus; % store stimulus in visual stimuli set and log a
 rightStimulus = vis.grating(t, 'sinusoid', 'gaussian');
 rightStimulus.orientation = p.stimulusOrientation;
 rightStimulus.altitude = 0;
-rightStimulus.sigma = [9,9];
+rightStimulus.sigma = [7,7];
 rightStimulus.spatialFreq = p.spatialFrequency;
 rightStimulus.phase = 2*pi*evts.newTrial.map(@(v)rand);
 rightStimulus.contrast = contrastRight;
@@ -125,21 +136,17 @@ nextCondition = feedback > 0 | p.repeatIncorrect == false;
 % we want to save these signals so we put them in events with appropriate
 % names:
 evts.stimulusOn = stimulusOn;
-evts.interactiveOn = interactiveOn;
+evts.contrastLeft = contrastLeft;
+evts.contrastRight = contrastRight;
 % save the contrasts as a difference between left and right
 evts.contrast = p.stimulusContrast.map(@diff); 
 evts.azimuth = azimuth;
 evts.response = response;
-evts.timeoutThreshold = skipRepeats(timeoutThreshold);
-evts.correctThreshold = skipRepeats(correctThreshold);
-evts.contrastLeft = contrastLeft;
-evts.contrastRight = contrastRight;
-% evts.rewardTotal = rewardTotal;
 evts.feedback = feedback;
-evts.timeout = timeout;
+evts.firstTrialSide = firstTrialSide;
+evts.correctResponse = correctResponse;
 % Accumulate reward signals and append microlitre units
-evts.totalReward = out.reward.scan(@plus, 0).map(fun.partial(@sprintf, '%.1fµl'));
-evts.timeoutR = rewardTimeout;
+evts.totalReward = out.reward.scan(@plus, 0).map(fun.partial(@sprintf, '%.1fµl')); 
 
 % Trial ends when evts.endTrial updates.  
 % If the value of evts.endTrial is false, the current set of conditional
@@ -149,24 +156,60 @@ evts.endTrial = nextCondition.at(stimulusOff).delay(p.interTrialDelay);
 
 %% Parameter defaults
 try
-p.onsetToneFrequency = 8000;
-p.stimulusContrast = [1 0;0 1;0.5 0;0 0.5]'; % conditional parameters have ncols > 1
-p.repeatIncorrect = true;
-p.interactiveDelay = 0;
+p.onsetToneFrequency = 5000;
+% p.stimulusContrast = [1 0;0 1;0.5 0;0 0.5]'; % conditional parameters have ncols > 1
+p.onContrast = 1;
+p.offContrast = 0;
+
+p.repeatIncorrect = false;
+p.interactiveDelay = 0.4;
 p.onsetToneAmplitude = 0.2;
-p.responseWindow = 5;
-p.stimulusAzimuth = 30;
+p.responseWindow = Inf;
+p.stimulusAzimuth = 35;
 p.noiseBurstAmp = 0.01;
 p.noiseBurstDur = 0.5;
-% p.rewardSize = 3;
+p.rewardSize = 1.5;
 p.rewardKey = 'r';
 p.stimulusOrientation = 0;
 p.spatialFrequency = 0.19; % Prusky & Douglas, 2004
 p.interTrialDelay = 0.5;
 p.wheelGain = 3;
-p.rewardTimeout = 1.5;
-p.rewardAction = 2;
+p.blockLength = 10; % Length of right/left trial blocks
+p.firstTrial = 1;
 % p.audDevIdx = 1;
 catch
 end
+end
+
+
+function trialDataInit = initializeTrialData(expRef)
+trialDataInit = struct;
+trialDataInit.ntrials = 0;
+trialDataInit.consecCorrect = 0;
+trialDataInit.hits = 0;
+trialDataInit.misses = 0;
+trialDataInit.avgRT = 0;
+trialDataInit.contrastLeft = 1;
+end
+
+
+function trialData = updateTrialData(trialData,responseData)
+% Update the performance and pick the next contrast
+stimDisplacement = responseData(1);
+avgResponseTime = responseData(2);
+trialNum = responseData(3);
+
+trialData.ntrials = trialData.ntrials + 1;
+trialData.hits = trialData.hits + 1;
+trialData.avgRT = avgResponseTime;
+
+
+%%%% Define response type based on trial condition
+trialData.hit = stimDisplacement*trialData.trialSide < 0;
+trialData.miss = stimDisplacement*trialData.trialSide > 0;
+
+trialData.contrastLeft = 1 - trialData.contrastLeft;
+
+
+
 end

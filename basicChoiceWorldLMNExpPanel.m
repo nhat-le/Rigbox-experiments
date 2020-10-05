@@ -1,4 +1,4 @@
-classdef basicChoiceworldExpPanel < eui.ExpPanel
+classdef basicChoiceWorldLMNExpPanel < eui.ExpPanel
   %BASICCHOICEWORLDEXPPANEL 
   % AP 2017-03-31 created
   % MW 2018-01-01 modified
@@ -24,7 +24,7 @@ classdef basicChoiceworldExpPanel < eui.ExpPanel
 
   
   methods
-    function obj = basicChoiceworldExpPanel(parent, ref, params, logEntry)
+    function obj = basicChoiceWorldLMNExpPanel(parent, ref, params, logEntry)
       obj = obj@eui.ExpPanel(parent, ref, params, logEntry);
       obj.LabelsMap = containers.Map();
       % Initialize InputSensor properties for speed
@@ -165,8 +165,8 @@ classdef basicChoiceworldExpPanel < eui.ExpPanel
           % Update wheel trace
           idx = strcmp('events.azimuth', {updates.name});
           if any(idx)
-            x = updates(idx).value-(side*90);
-            t = (24*3600*datenum(updates(idx).timestamp))-(24*3600*obj.StartedDateTime);
+            x = updates(find(idx, 1, 'last')).value;
+            t = (24*3600*datenum(updates(find(idx, 1, 'last')).timestamp))-(24*3600*obj.StartedDateTime);
             % Downsample wheel trace plot to 10Hz
             if obj.InputSensorPosCount==0||...
                     t(end)-obj.InputSensorPosTime(obj.InputSensorPosCount) > 0.1
@@ -227,6 +227,7 @@ classdef basicChoiceworldExpPanel < eui.ExpPanel
               curr_performance_data = updates(idx).value;
               conditions = curr_performance_data(1,:);
               leftward = curr_performance_data(3,:)./curr_performance_data(2,:);
+              disp(curr_performance_data);
               obj.PsychometricAxes.plot(conditions(~isnan(leftward)), ...
                   leftward(~isnan(leftward)),'o-k');
               obj.PsychometricAxes.XLim = [-1,1];
